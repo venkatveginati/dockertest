@@ -1,10 +1,8 @@
  pipeline {
  
  agent any
- tools { 
-        maven 'Maven 3.3.9' 
-        jdk 'jdk8' 
-    }
+ def mvnHome = tool 'Maven3'
+
  
  stages {
  
@@ -17,7 +15,7 @@
     
     stage ('build')  {
         steps{
-        sh "mvn -B -DskipTests clean package -f MyAwesomeApp/pom.xml"
+        sh "mvn -f MyAwesomeApp/pom.xml clean package"
         }
     } 
     
