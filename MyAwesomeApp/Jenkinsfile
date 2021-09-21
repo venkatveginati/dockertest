@@ -1,53 +1,67 @@
- pipeline {
- 
- agent any
- def mvnHome = tool 'Maven3'
+pipeline {
 
- 
- stages {
- 
- stage ('Checkout') {    
-       steps{
-           git 'https://github.com/Prasad459/myspringboot.git'
-       }   
-    
+  agent any
+  
+ parameters {
+	choice(name: 'action', choices: 'create\nrollback', description: 'Create/rollback of the deployment')
+ //   string(name: 'ImageName', description: "Name of the docker build")
+//	string(name: 'ImageTag', description: "Name of the docker build")
+	string(name: 'AppName', description: "Name of the Application")
+  //  string(name: 'docker_repo', description: "Name of docker repository")
+  }
+      
+  tools{ 
+        maven 'maven3'
     }
-    
-    stage ('build')  {
-        steps{
-        sh "mvn -f MyAwesomeApp/pom.xml clean package"
+    stages {
+        stage('checkout') {
+        steps {
+            git 'https://github.com/Prasad459/myspringboot.git'
         }
-    } 
-    
-    stage ('Docker Build') {
+    }
+    stage('Build Maven'){
+            when {
+				expression { params.action == 'create' }
+			}
+    		steps {
+        		dir("${params.AppName}") {
+        			sh 'mvn -f /var/lib/jenkins/workspace/springboot-app/MyAwesomeApp/pom.xml clean package'
+        		//	sh 'mvn clean package'
+        		}
+    		}
+	    }
+		stage ('Docker Build') {
         steps{
             script{
      // Build and push image with Jenkins' docker-plugin
-    withDockerServer([uri: "tcp://localhost:4243"]) {
+    
         withDockerRegistry([credentialsId: "dockerhub", url: "https://index.docker.io/v1/"]) {
         image = docker.build("prasad459/myspringbootapp", "MyAwesomeApp")
         image.push()    
         }
-      }
+      
             }
         }
     }
-    
-    stage ('Kubernetes Deploy') {
-        steps{
-            script{
-        kubernetesDeploy(
-            configs: 'MyAwesomeApp/springBootDeploy.yml',
-            kubeconfigId: 'K8S',
-            enableConfigSubstitution: true
-            )
-            }
-        }
-    }
-    /*
-        stage ('Kubernetes Deploy using Kubectl') {
-          sh "kubectl apply -f MyAwesomeApp/springBootDeploy.yml"
-    }*/
-
-   }
- }
+     stage("Create deployment") {
+			when {
+				expression { params.action == 'create' }
+			}
+	        steps {
+	            dir("${params.AppName}") {
+	                withCredentials([[$class: 'AmazonWebServicesCredentialsBinding', 
+	                        accessKeyVariable: 'AWS_ACCESS_KEY_ID', 
+	                        credentialsId: 'AWS_Credentials', 
+	                        secretKeyVariable: 'AWS_SECRET_ACCESS_KEY']]) {
+	                    withCredentials([kubeconfigFile(credentialsId: 'K8S', 
+	                        variable: 'KUBECONFIG')]) {
+	                        sh 'kubectl create -f /var/lib/jenkins/workspace/springboot-app/MyAwesomeApp/springBootDeploy.yml'
+	                    }
+	                }
+	            }
+	        }
+	    }
+	
+        
+	}	
+}
